@@ -76,6 +76,39 @@ const getAppDateKey = (value = new Date()) => {
     : null;
 };
 
+/*
+  La bandeja operativa y el dashboard solo muestran el mes calendario
+  vigente en El Salvador. Los DTE anteriores permanecen almacenados.
+*/
+const getCurrentMonthIssuedAtRange = (value = new Date()) => {
+  const parts = getAppDateParts(value);
+
+  if (!parts) {
+    throw new Error(
+      'No fue posible determinar el mes vigente para la consulta de DTE'
+    );
+  }
+
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+
+  const buildMonthStart = (targetYear, targetMonth) => {
+    const normalizedMonth = String(targetMonth).padStart(2, '0');
+
+    return new Date(
+      `${targetYear}-${normalizedMonth}-01T00:00:00-06:00`
+    );
+  };
+
+  return {
+    [Op.gte]: buildMonthStart(year, month),
+    [Op.lt]: buildMonthStart(nextYear, nextMonth)
+  };
+};
+
 const buildIssuedAtFromInput = (value) => {
   if (!value) return new Date();
 
@@ -1245,7 +1278,8 @@ const listInvoices = async ({ user }) => {
 
   const invoices = await Invoice.findAll({
     where: {
-      companyId: currentUser.company.id
+      companyId: currentUser.company.id,
+      issuedAt: getCurrentMonthIssuedAtRange()
     },
     include: [
       {
@@ -1332,7 +1366,8 @@ const getDashboardSummary = async ({ user }) => {
 
   const invoices = await Invoice.findAll({
     where: {
-      companyId: currentUser.company.id
+      companyId: currentUser.company.id,
+      issuedAt: getCurrentMonthIssuedAtRange()
     },
     include: [
       {
@@ -1341,7 +1376,7 @@ const getDashboardSummary = async ({ user }) => {
       },
       buildInvoiceVisibilityInclude(currentUser)
     ],
-    order: [['createdAt', 'DESC']]
+    order: [['issuedAt', 'DESC']]
   });
 
   const summary = {
