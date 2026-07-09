@@ -584,31 +584,6 @@ const getDocumentTypeOrder = (documentTypeCode) => {
     setTransmitModalOpen(true);
   };
 
-  const handleResetSignedError = async (invoice) => {
-    if (!(invoice.status === 'FIRMADO' && invoice.validationStatus === 'ERROR')) {
-      toast.error('Solo se pueden preparar para reintento los DTE firmados con error');
-      return;
-    }
-
-    try {
-      setProcessingId(`reset-${invoice.id}`);
-
-      const data = await resetSignedInvoiceToGeneratedRequest(invoice.id);
-
-      toast.success(data.message || 'DTE devuelto a estado GENERADO');
-
-      await loadInvoices();
-      await refreshSelectedInvoice(invoice.id);
-    } catch (error) {
-      console.error('Error devolviendo DTE a GENERADO:', error);
-
-      const message = error.response?.data?.message || 'No se pudo devolver el DTE a GENERADO';
-      toast.error(message);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   const closeTransmitModal = () => {
     if (processingId) return;
 
@@ -1181,7 +1156,7 @@ const renderEmailLogAttachments = (attachmentsJson) => {
               </button>
             )}
 
-            {!['GENERADO', 'ACEPTADO', 'ANULADO'].includes(invoice.status) && !canResetSignedError && (
+            {!['GENERADO', 'FIRMADO', 'ACEPTADO', 'ANULADO'].includes(invoice.status) && (
               <div className="rounded-xl bg-gray-50 border px-3 py-3 text-sm text-gray-500 text-center">
                 Sin acciones disponibles.
               </div>
