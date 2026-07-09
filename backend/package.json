@@ -12,7 +12,6 @@
   "seed:test:ccf": "node scripts/04-seed-ccf-dinamico.js",
   "seed:test:notas-credito": "node scripts/09-seed-notas-credito-dinamico.js",
   "seed:test:fsee": "node scripts/10-seed-fsee-dinamico.js",
-  "seed:test:nre": "node scripts/12-seed-nota-remision.js",
   "seed:test:reset": "node scripts/11-reset-total-pruebas-keep-admin.js"
   },
   "keywords": [

@@ -60,7 +60,6 @@ services:
     restart: always
     env_file:
       - .env
-    command: npm run dev -- --host 0.0.0.0
     ports:
       - "${FRONTEND_PORT}:5173"
     volumes:

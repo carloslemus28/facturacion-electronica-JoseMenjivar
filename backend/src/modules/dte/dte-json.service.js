@@ -3,7 +3,6 @@ const invoicesService = require('../invoices/invoices.service');
 const DOCUMENT_TYPE_CODES = {
   FACTURA: '01',
   CCF: '03',
-  NOTA_REMISION: '04',
   NOTA_CREDITO: '05',
   EXPORTACION: '11',
   SUJETO_EXCLUIDO: '14'
@@ -136,7 +135,6 @@ const getDteVersion = (documentTypeCode) => {
   const versions = {
     '01': 1,
     '03': 3,
-    '04': 3,
     '05': 3,
     '11': 1,
     '14': 1
@@ -256,10 +254,6 @@ const isCreditNoteDocument = (documentTypeCode) => {
   return String(documentTypeCode) === DOCUMENT_TYPE_CODES.NOTA_CREDITO;
 };
 
-const isDeliveryNote = (documentTypeCode) => {
-  return String(documentTypeCode) === DOCUMENT_TYPE_CODES.NOTA_REMISION;
-};
-
 const isExportInvoice = (documentTypeCode) => {
   return String(documentTypeCode) === DOCUMENT_TYPE_CODES.EXPORTACION;
 };
@@ -269,7 +263,7 @@ const isExcludedSubjectInvoice = (documentTypeCode) => {
 };
 
 const isIvaSeparatedDocument = (documentTypeCode) => {
-  return ['03', '04', '05', '06'].includes(String(documentTypeCode));
+  return ['03', '05', '06'].includes(String(documentTypeCode));
 };
 
 const isTaxpayerReceiverDocument = (documentTypeCode) => {
@@ -703,43 +697,6 @@ const buildConsumerFinalReceiver = (customer) => {
   };
 };
 
-const getDeliveryPurposeCode = (invoice) => {
-  const notes = cleanString(invoice?.notes) || '';
-  const match = notes.match(/\bNRE-TITULO-(0[1-5])\b/i);
-
-  // Compatibilidad con NRE generadas por la seed anterior.
-  return match?.[1] || '04';
-};
-
-const buildDeliveryNoteReceiver = (invoice) => {
-  const customer = invoice.customer || {};
-
-  if (!customer?.id) {
-    return null;
-  }
-
-  return {
-    tipoDocumento: getDocumentTypeForReceiver(customer.documentType),
-    numDocumento: formatReceiverDocumentNumber(
-      customer.documentType,
-      customer.documentNumber
-    ),
-    nrc: cleanDigits(customer.nrc),
-    nombre: cleanString(customer.name),
-    codActividad: cleanString(customer.economicActivityCode),
-    descActividad: cleanString(customer.economicActivityName),
-    nombreComercial: cleanString(customer.commercialName || customer.name),
-    direccion: {
-      departamento: cleanCatalogCode(customer.departmentCode, 2),
-      municipio: cleanCatalogCode(customer.municipalityCode, 2),
-      complemento: cleanAddressComplement(customer.addressComplement)
-    },
-    telefono: cleanPhone(customer.phone),
-    correo: cleanString(customer.email),
-    bienTitulo: getDeliveryPurposeCode(invoice)
-  };
-};
-
 const buildTaxpayerReceiver = (customer) => {
   if (!customer?.id) {
     return null;
@@ -815,10 +772,6 @@ const buildExcludedSubject = (customer) => {
 const buildReceiver = (invoice) => {
   const documentTypeCode = String(invoice.documentTypeCode || '');
   const customer = invoice.customer || {};
-
-  if (isDeliveryNote(documentTypeCode)) {
-    return buildDeliveryNoteReceiver(invoice);
-  }
 
   if (isTaxpayerReceiverDocument(documentTypeCode)) {
     return buildTaxpayerReceiver(customer);
@@ -907,27 +860,6 @@ const buildCreditNoteBodyItem = ({ invoice, item, index }) => {
   };
 };
 
-const buildDeliveryNoteBodyItem = ({ item, index }) => {
-  const hasIva = Number(item.gravada || 0) > 0;
-
-  return {
-    numItem: index + 1,
-    tipoItem: getItemTypeCode(item.itemType),
-    numeroDocumento: null,
-    cantidad: round4(item.quantity),
-    codigo: cleanString(item.code),
-    codTributo: null,
-    uniMedida: getUnitOfMeasureCode(item.unitOfMeasure),
-    descripcion: cleanString(item.description),
-    precioUni: round4(item.unitPrice),
-    montoDescu: 0,
-    ventaNoSuj: round2(item.noSuj),
-    ventaExenta: round2(item.exenta),
-    ventaGravada: round2(item.gravada),
-    tributos: hasIva ? [IVA_TRIBUTE_CODE] : null
-  };
-};
-
 const buildExportBodyItem = ({ item, index }) => {
   const ventaGravada = round2(item.gravada || item.total || item.subtotal);
 
@@ -967,13 +899,6 @@ const buildBody = (invoice) => {
     if (isCreditNoteDocument(documentTypeCode)) {
       return buildCreditNoteBodyItem({
         invoice,
-        item,
-        index
-      });
-    }
-
-    if (isDeliveryNote(documentTypeCode)) {
-      return buildDeliveryNoteBodyItem({
         item,
         index
       });
@@ -1118,31 +1043,6 @@ const buildTaxpayerSummary = (invoice) => {
   };
 };
 
-const buildDeliveryNoteSummary = (invoice) => {
-  const totalNoSuj = round2(invoice.noSuj);
-  const totalExenta = round2(invoice.exenta);
-  const totalGravada = round2(invoice.gravada);
-  const subTotalVentas = round2(totalNoSuj + totalExenta + totalGravada);
-  const subTotal = round2(invoice.subtotal);
-  const montoTotalOperacion = round2(subTotal + getOfficialTotalIva(invoice));
-
-  return {
-    totalNoSuj,
-    totalExenta,
-    totalGravada,
-    subTotalVentas,
-    descuNoSuj: 0,
-    descuExenta: 0,
-    descuGravada: 0,
-    porcentajeDescuento: 0,
-    totalDescu: 0,
-    tributos: buildIvaTributes(invoice),
-    subTotal,
-    montoTotalOperacion,
-    totalLetras: amountToSpanishWords(montoTotalOperacion)
-  };
-};
-
 const buildCreditNoteSummary = (invoice) => {
   const operationConditionCode = getOperationConditionCode(invoice.operationCondition);
 
@@ -1243,10 +1143,6 @@ const buildSummary = (invoice) => {
     return buildCreditNoteSummary(invoice);
   }
 
-  if (isDeliveryNote(documentTypeCode)) {
-    return buildDeliveryNoteSummary(invoice);
-  }
-
   if (isTaxpayerReceiverDocument(documentTypeCode)) {
     return buildTaxpayerSummary(invoice);
   }
@@ -1274,7 +1170,7 @@ const buildExtension = (invoice) => {
     observaciones: cleanString(invoice.notes)
   };
 
-  if (!isCreditNoteDocument(documentTypeCode) && !isDeliveryNote(documentTypeCode)) {
+  if (!isCreditNoteDocument(documentTypeCode)) {
     extension.placaVehiculo = null;
   }
 
@@ -1357,20 +1253,6 @@ const buildStandardDteJson = (invoice) => {
       sujetoExcluido: buildExcludedSubject(invoice.customer || {}),
       cuerpoDocumento: buildBody(invoice),
       resumen: buildSummary(invoice),
-      apendice: buildAppendix(invoice)
-    };
-  }
-
-  if (isDeliveryNote(documentTypeCode)) {
-    return {
-      identificacion: buildIdentification(invoice),
-      documentoRelacionado: buildDocumentRelated(invoice),
-      emisor: buildIssuer(invoice),
-      receptor: buildReceiver(invoice),
-      ventaTercero: null,
-      cuerpoDocumento: buildBody(invoice),
-      resumen: buildSummary(invoice),
-      extension: buildExtension(invoice),
       apendice: buildAppendix(invoice)
     };
   }

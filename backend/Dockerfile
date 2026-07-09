@@ -17,7 +17,7 @@ EXPOSE 4000
 CMD ["npm", "run", "dev"]
 
 
-# Producción en Railway.
+# Producción para Railway.
 FROM base AS production
 
 ENV NODE_ENV=production
