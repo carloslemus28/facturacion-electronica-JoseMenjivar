@@ -48,6 +48,13 @@ router.patch(
 );
 
 router.patch(
+  '/:id/reset-signed-error',
+  authenticate,
+  authorize('INVOICES_TRANSMIT'),
+  invoicesController.resetSignedErrorToGenerated
+);
+
+router.patch(
   '/:id/invalidate',
   authenticate,
   authorize('DTE_INVALIDATE'),

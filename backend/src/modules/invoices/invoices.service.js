@@ -1706,18 +1706,21 @@ const transmitInvoiceToHaciendaReal = async ({ id, user }) => {
       throw error;
     }
 
-    // Si Hacienda no confirma aceptación ni rechazo de validación (por ejemplo,
-    // HTTP 5xx), no se debe retransmitir a ciegas: podría haberlo recibido.
+    // Si Hacienda no confirma aceptación ni rechazo de validación, el DTE queda
+    // nuevamente en GENERADO para que el usuario tenga acción disponible y pueda
+    // corregir/reintentar desde pantalla. Se conserva la respuesta para auditoría.
     await invoice.update({
-      status: 'FIRMADO',
+      status: 'GENERADO',
+      signedJws: null,
+      signedAt: null,
       validationStatus: 'ERROR',
       validationErrorsJson: transmission.response || null,
-      transmittedAt,
+      transmittedAt: null,
       acceptedAt: null,
       receptionSeal: null,
       rejectionReason: transmission.rejectionReason || 'No se pudo confirmar el resultado de Hacienda',
       mhResponseJson: {
-        modo: 'PENDIENTE_VERIFICACION_HACIENDA',
+        modo: 'ERROR_TRANSMISION_HACIENDA_REINTENTABLE',
         estado: transmission.estado,
         httpStatus: transmission.httpStatus,
         payload: transmission.payload,
@@ -1729,7 +1732,7 @@ const transmitInvoiceToHaciendaReal = async ({ id, user }) => {
 
     const error = new Error(
       transmission.rejectionReason ||
-      'No se pudo confirmar el resultado de la transmisión con Hacienda'
+      'No se pudo confirmar el resultado de la transmisión con Hacienda. El DTE volvió a GENERADO para corregirlo o reenviarlo.'
     );
     error.statusCode = 502;
     error.transmissionPendingVerification = true;
@@ -1740,22 +1743,24 @@ const transmitInvoiceToHaciendaReal = async ({ id, user }) => {
       throw error;
     }
 
-    // Un timeout o error de red tampoco permite confirmar si Hacienda recibió
-    // el DTE. Se mantiene FIRMADO hasta verificar el resultado.
+    // Si hubo error de comunicación con Hacienda, el DTE vuelve a GENERADO para
+    // que no quede bloqueado sin acciones. La respuesta se conserva para revisar.
     if (error.haciendaResponse) {
       await invoice.update({
-        status: 'FIRMADO',
+        status: 'GENERADO',
+        signedJws: null,
+        signedAt: null,
         validationStatus: 'ERROR',
         validationErrorsJson: {
           message: error.message,
           haciendaResponse: error.haciendaResponse || null
         },
-        transmittedAt,
+        transmittedAt: null,
         acceptedAt: null,
         receptionSeal: null,
         rejectionReason: error.message,
         mhResponseJson: {
-          modo: 'PENDIENTE_VERIFICACION_HACIENDA',
+          modo: 'ERROR_TRANSMISION_HACIENDA_REINTENTABLE',
           message: error.message,
           haciendaResponse: error.haciendaResponse || null
         },
@@ -1790,6 +1795,76 @@ const transmitInvoiceToHaciendaReal = async ({ id, user }) => {
 
     throw error;
   }
+};
+
+const resetSignedInvoiceToGenerated = async ({ id, user }) => {
+  const currentUser = await resolveUserContext(user);
+
+  const invoice = await Invoice.findByPk(id, {
+    include: [
+      {
+        model: Company,
+        as: 'company'
+      },
+      buildPointOfSaleInclude(),
+      {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'username', 'firstName', 'lastName', 'email']
+      },
+      {
+        model: Customer,
+        as: 'customer'
+      },
+      {
+        model: InvoiceItem,
+        as: 'items',
+        include: [
+          {
+            model: Product,
+            as: 'product'
+          }
+        ]
+      }
+    ]
+  });
+
+  if (!invoice) {
+    const error = new Error('DTE no encontrado');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  await validateInvoiceVisibility({
+    invoice,
+    user: currentUser
+  });
+
+  if (!(invoice.status === 'FIRMADO' && invoice.validationStatus === 'ERROR')) {
+    const error = new Error('Solo se pueden devolver a GENERADO los DTE firmados con error');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await invoice.update({
+    status: 'GENERADO',
+    signedJws: null,
+    signedAt: null,
+    validationStatus: 'ERROR',
+    transmittedAt: null,
+    acceptedAt: null,
+    receptionSeal: null,
+    mhResponseJson: {
+      modo: 'REVERTIDO_A_GENERADO_PARA_REINTENTO',
+      previousResponse: invoice.mhResponseJson || null,
+      previousValidationErrors: invoice.validationErrorsJson || null,
+      revertedAt: new Date().toISOString()
+    }
+  });
+
+  return getInvoiceById(invoice.id, {
+    user: currentUser
+  });
 };
 
 const invalidateInvoiceReal = async ({ id, user, reason }) => {
@@ -1961,5 +2036,6 @@ module.exports = {
   getDashboardSummary,
   listAvailableDocumentsForCreditNote,
   transmitInvoiceToHaciendaReal,
+  resetSignedInvoiceToGenerated,
   invalidateInvoiceReal
 };

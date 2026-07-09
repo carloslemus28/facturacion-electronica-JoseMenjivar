@@ -167,6 +167,23 @@ const transmitReal = async (req, res, next) => {
   }
 };
 
+const resetSignedErrorToGenerated = async (req, res, next) => {
+  try {
+    const invoice = await invoicesService.resetSignedInvoiceToGenerated({
+      id: req.params.id,
+      user: req.user
+    });
+
+    res.json({
+      ok: true,
+      message: 'DTE devuelto a estado GENERADO para corrección o reintento',
+      invoice
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const invalidateReal = async (req, res, next) => {
   try {
     const invoice = await invoicesService.invalidateInvoiceReal({
@@ -239,5 +256,6 @@ module.exports = {
   getDashboardSummary,
   listAvailableDocumentsForCreditNote,
   transmitReal,
+  resetSignedErrorToGenerated,
   invalidateReal
 };
