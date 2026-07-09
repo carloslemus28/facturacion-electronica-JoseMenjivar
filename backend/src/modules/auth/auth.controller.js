@@ -1,13 +1,31 @@
 const authService = require('./auth.service');
 
 const getCookieOptions = () => {
+  const sameSite = (process.env.COOKIE_SAME_SITE || 'lax').toLowerCase();
+
   return {
     httpOnly: true,
-    secure: process.env.COOKIE_SECURE === 'true',
-    sameSite: process.env.COOKIE_SAME_SITE || 'lax',
+    secure: process.env.COOKIE_SECURE === 'true' || sameSite === 'none',
+    sameSite,
     signed: true,
     path: '/'
   };
+};
+
+const getRefreshTokenFromRequest = (req) => {
+  const signedToken = req.signedCookies?.refreshToken;
+
+  if (typeof signedToken === 'string' && signedToken.trim()) {
+    return signedToken;
+  }
+
+  const unsignedToken = req.cookies?.refreshToken;
+
+  if (typeof unsignedToken === 'string' && unsignedToken.trim()) {
+    return unsignedToken;
+  }
+
+  return null;
 };
 
 const login = async (req, res, next) => {
@@ -39,7 +57,14 @@ const login = async (req, res, next) => {
 
 const refresh = async (req, res, next) => {
   try {
-    const refreshToken = req.signedCookies.refreshToken;
+    const refreshToken = getRefreshTokenFromRequest(req);
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        ok: false,
+        message: 'Sesión no encontrada. Inicie sesión nuevamente.'
+      });
+    }
 
     const result = await authService.refresh({
       refreshToken,
@@ -65,7 +90,7 @@ const refresh = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    const refreshToken = req.signedCookies.refreshToken;
+    const refreshToken = getRefreshTokenFromRequest(req);
 
     await authService.logout(refreshToken);
 

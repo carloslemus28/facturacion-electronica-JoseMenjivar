@@ -17,6 +17,7 @@ export function AuthProvider({ children }) {
   const [accessToken, setAccessTokenState] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const authVersionRef = useRef(0);
+  const validateStartedRef = useRef(false);
 
   const isAuthenticated = Boolean(user && accessToken);
 
@@ -26,10 +27,10 @@ export function AuthProvider({ children }) {
   };
 
   const clearSession = () => {
-  setUser(null);
-  setAccessTokenState(null);
-  tokenStore.clearAccessToken();
-};
+    setUser(null);
+    setAccessTokenState(null);
+    tokenStore.clearAccessToken();
+  };
 
   const login = async ({ username, password }) => {
     authVersionRef.current += 1;
@@ -72,8 +73,21 @@ export function AuthProvider({ children }) {
 
   const validateSession = async () => {
     const validationVersion = authVersionRef.current;
+    const storedAccessToken = tokenStore.getAccessToken();
 
     try {
+      if (storedAccessToken) {
+        setAccessTokenState(storedAccessToken);
+        const data = await meRequest();
+
+        if (validationVersion !== authVersionRef.current) {
+          return;
+        }
+
+        setUser(data.user);
+        return;
+      }
+
       const data = await refreshRequest();
 
       if (validationVersion !== authVersionRef.current) {
@@ -82,8 +96,6 @@ export function AuthProvider({ children }) {
 
       setUser(data.user);
       setAccessToken(data.accessToken);
-
-      await meRequest();
     } catch (error) {
       if (validationVersion !== authVersionRef.current) {
         return;
@@ -98,6 +110,11 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
+    if (validateStartedRef.current) {
+      return;
+    }
+
+    validateStartedRef.current = true;
     validateSession();
   }, []);
 

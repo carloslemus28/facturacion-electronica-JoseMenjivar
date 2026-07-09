@@ -18,7 +18,7 @@ import {
   getAvailableDocumentsForCreditNoteRequest,
   getInvoiceByIdRequest
 } from '../api/invoices.api';
-import { refreshRequest } from '../api/auth.api';
+import { meRequest } from '../api/auth.api';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 
@@ -315,7 +315,7 @@ function GenerateInvoicePage() {
       const [customersData, productsData, authData] = await Promise.all([
         getCustomersRequest({ isActive: 'true' }),
         getProductsRequest({ isActive: 'true' }),
-        refreshRequest()
+        meRequest()
       ]);
 
       setCustomers(customersData.customers || []);

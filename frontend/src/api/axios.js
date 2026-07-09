@@ -73,8 +73,14 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const response = await api.post('/auth/refresh');
+      const response = await api.post('/auth/refresh', null, {
+        withCredentials: true
+      });
       const newAccessToken = response.data.accessToken;
+
+      if (!newAccessToken) {
+        throw new Error('La renovación de sesión no devolvió token de acceso');
+      }
 
       tokenStore.setAccessToken(newAccessToken);
 

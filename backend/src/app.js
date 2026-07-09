@@ -21,6 +21,9 @@ const emailsRoutes = require('./modules/emails/emails.routes');
 
 const app = express();
 
+// Necesario para cookies seguras cuando el backend está detrás de proxy/Railway.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
