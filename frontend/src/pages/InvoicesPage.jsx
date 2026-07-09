@@ -34,6 +34,7 @@ import {
   getInvoiceEmailLogsRequest,
   getInvoicesRequest,
   invalidateInvoiceRequest,
+  resetSignedInvoiceToGeneratedRequest,
   sendInvoiceEmailRequest,
   transmitInvoiceRequest
 } from '../api/invoices.api';
@@ -547,9 +548,35 @@ const getDocumentTypeOrder = (documentTypeCode) => {
     }
   };
 
-  const handleTransmit = (invoice) => {
-    if (invoice.status !== 'GENERADO') {
-      toast.error('Solo se pueden transmitir documentos en estado GENERADO');
+  const handleTransmit = async (invoice) => {
+    if (!['GENERADO', 'FIRMADO'].includes(invoice.status)) {
+      toast.error('Solo se pueden transmitir documentos en estado GENERADO o FIRMADO');
+      return;
+    }
+
+    if (invoice.status === 'FIRMADO') {
+      try {
+        setProcessingId(invoice.id);
+
+        const data = await resetSignedInvoiceToGeneratedRequest(invoice.id);
+        const nextInvoice = data.invoice || invoice;
+
+        toast.success('DTE preparado para volver a transmitir');
+
+        await loadInvoices();
+        await refreshSelectedInvoice(invoice.id);
+
+        setTransmitTargetInvoice(nextInvoice);
+        setTransmitModalOpen(true);
+      } catch (error) {
+        console.error('Error preparando DTE firmado para transmisión:', error);
+
+        const message = error.response?.data?.message || 'No se pudo preparar el DTE para transmitirlo nuevamente';
+        toast.error(message);
+      } finally {
+        setProcessingId(null);
+      }
+
       return;
     }
 
@@ -961,8 +988,7 @@ const renderEmailLogAttachments = (attachmentsJson) => {
   };
 
   const renderActionButtons = (invoice) => {
-    const isProcessing = Number(processingId) === Number(invoice.id) || processingId === `reset-${invoice.id}`;
-    const canResetSignedError = invoice.status === 'FIRMADO' && invoice.validationStatus === 'ERROR';
+    const isProcessing = Number(processingId) === Number(invoice.id);
     const isDocumentJsonProcessing = jsonProcessingId === `document-${invoice.id}`;
     const isInvalidationJsonProcessing = jsonProcessingId === `invalidation-${invoice.id}`;
     const isDocumentPdfProcessing = pdfProcessingId === `document-${invoice.id}`;
@@ -1094,7 +1120,7 @@ const renderEmailLogAttachments = (attachmentsJson) => {
           {groupTitle('Gestión')}
 
           <div className="space-y-2">
-            {invoice.status === 'GENERADO' && (
+            {['GENERADO', 'FIRMADO'].includes(invoice.status) && (
               <button
                 type="button"
                 onClick={() => handleTransmit(invoice)}
@@ -1106,17 +1132,6 @@ const renderEmailLogAttachments = (attachmentsJson) => {
               </button>
             )}
 
-            {canResetSignedError && (
-              <button
-                type="button"
-                onClick={() => handleResetSignedError(invoice)}
-                disabled={isProcessing}
-                className={`${buttonBase} bg-amber-600 text-white hover:bg-amber-700`}
-              >
-                {isProcessing ? <Loader2 className="animate-spin" size={17} /> : <RefreshCcw size={17} />}
-                Volver a GENERADO
-              </button>
-            )}
 
             {invoice.status === 'ACEPTADO' && (
               <>
@@ -1808,7 +1823,7 @@ const renderEmailLogAttachments = (attachmentsJson) => {
                     {selectedInvoice.rejectionReason || 'No se pudo confirmar la respuesta de Hacienda.'}
                   </p>
                   <p className="mt-1">
-                    Puede devolverlo a GENERADO para corregirlo o intentar transmitirlo nuevamente desde Gestión.
+                    Desde Gestión puede prepararlo automáticamente y volver a enviarlo a Hacienda.
                   </p>
                 </div>
               )}
@@ -2371,7 +2386,7 @@ const renderEmailLogAttachments = (attachmentsJson) => {
                           <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-900">
                             <p className="font-semibold">Pendiente de verificar</p>
                             <p>
-                              No se pudo confirmar la respuesta de Hacienda. Puede usar Gestión para devolverlo a GENERADO.
+                              No se pudo confirmar la respuesta de Hacienda. Puede volver a enviarlo desde Gestión.
                             </p>
                           </div>
                         )}

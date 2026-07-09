@@ -1840,22 +1840,26 @@ const resetSignedInvoiceToGenerated = async ({ id, user }) => {
     user: currentUser
   });
 
-  if (!(invoice.status === 'FIRMADO' && invoice.validationStatus === 'ERROR')) {
-    const error = new Error('Solo se pueden devolver a GENERADO los DTE firmados con error');
+  if (invoice.status !== 'FIRMADO') {
+    const error = new Error('Solo se pueden preparar para reintento los DTE firmados');
     error.statusCode = 400;
     throw error;
   }
+
+  const nextValidationStatus = invoice.validationStatus === 'ERROR'
+    ? 'ERROR'
+    : 'PENDIENTE';
 
   await invoice.update({
     status: 'GENERADO',
     signedJws: null,
     signedAt: null,
-    validationStatus: 'ERROR',
+    validationStatus: nextValidationStatus,
     transmittedAt: null,
     acceptedAt: null,
     receptionSeal: null,
     mhResponseJson: {
-      modo: 'REVERTIDO_A_GENERADO_PARA_REINTENTO',
+      modo: 'PREPARADO_A_GENERADO_PARA_RETRANSMISION',
       previousResponse: invoice.mhResponseJson || null,
       previousValidationErrors: invoice.validationErrorsJson || null,
       revertedAt: new Date().toISOString()
